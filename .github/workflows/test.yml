@@ -1,0 +1,382 @@
+name: Test Action
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-aws-ecr:
+    runs-on: ubuntu-latest
+    name: Test AWS ECR Parsing
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test AWS ECR standard format
+        uses: ./
+        id: test-ecr
+        with:
+          image: '123456789012.dkr.ecr.us-east-1.amazonaws.com/my-service'
+          
+      - name: Verify AWS ECR outputs
+        run: |
+          echo "Testing AWS ECR parsing..."
+          echo "Provider: ${{ steps.test-ecr.outputs.provider }}"
+          echo "Account: ${{ steps.test-ecr.outputs.account }}"
+          echo "Region: ${{ steps.test-ecr.outputs.region }}"
+          echo "Registry: ${{ steps.test-ecr.outputs.registry }}"
+          echo "Repository: ${{ steps.test-ecr.outputs.repository }}"
+          echo "Registry Type: ${{ steps.test-ecr.outputs.registry_type }}"
+          
+          # Verify outputs
+          [[ "${{ steps.test-ecr.outputs.provider }}" == "aws" ]] || { echo "ERROR: Provider should be 'aws'"; exit 1; }
+          [[ "${{ steps.test-ecr.outputs.account }}" == "123456789012" ]] || { echo "ERROR: Account incorrect"; exit 1; }
+          [[ "${{ steps.test-ecr.outputs.region }}" == "us-east-1" ]] || { echo "ERROR: Region incorrect"; exit 1; }
+          [[ "${{ steps.test-ecr.outputs.registry }}" == "123456789012.dkr.ecr.us-east-1.amazonaws.com" ]] || { echo "ERROR: Registry incorrect"; exit 1; }
+          [[ "${{ steps.test-ecr.outputs.repository }}" == "my-service" ]] || { echo "ERROR: Repository incorrect"; exit 1; }
+          [[ "${{ steps.test-ecr.outputs.registry_type }}" == "ecr" ]] || { echo "ERROR: Registry type incorrect"; exit 1; }
+          echo "✅ AWS ECR parsing successful"
+      
+      - name: Test AWS ECR with complex repository path
+        uses: ./
+        id: test-ecr-complex
+        with:
+          image: '987654321098.dkr.ecr.eu-west-2.amazonaws.com/team/project/service'
+          
+      - name: Verify complex repository path
+        run: |
+          [[ "${{ steps.test-ecr-complex.outputs.provider }}" == "aws" ]] || { echo "ERROR: Provider should be 'aws'"; exit 1; }
+          [[ "${{ steps.test-ecr-complex.outputs.account }}" == "987654321098" ]] || { echo "ERROR: Account incorrect"; exit 1; }
+          [[ "${{ steps.test-ecr-complex.outputs.region }}" == "eu-west-2" ]] || { echo "ERROR: Region incorrect"; exit 1; }
+          [[ "${{ steps.test-ecr-complex.outputs.repository }}" == "team/project/service" ]] || { echo "ERROR: Repository path incorrect"; exit 1; }
+          echo "✅ AWS ECR complex path parsing successful"
+
+  test-aws-ecr-public:
+    runs-on: ubuntu-latest
+    name: Test AWS ECR Public Parsing
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test AWS ECR Public format
+        uses: ./
+        id: test-ecr-public
+        with:
+          image: 'public.ecr.aws/myalias/my-app'
+          
+      - name: Verify AWS ECR Public outputs
+        run: |
+          echo "Testing AWS ECR Public parsing..."
+          [[ "${{ steps.test-ecr-public.outputs.provider }}" == "aws" ]] || { echo "ERROR: Provider should be 'aws'"; exit 1; }
+          [[ "${{ steps.test-ecr-public.outputs.account }}" == "myalias" ]] || { echo "ERROR: Account/alias incorrect"; exit 1; }
+          [[ "${{ steps.test-ecr-public.outputs.region }}" == "us-east-1" ]] || { echo "ERROR: Region should be us-east-1"; exit 1; }
+          [[ "${{ steps.test-ecr-public.outputs.registry }}" == "public.ecr.aws/myalias" ]] || { echo "ERROR: Registry incorrect"; exit 1; }
+          [[ "${{ steps.test-ecr-public.outputs.repository }}" == "my-app" ]] || { echo "ERROR: Repository incorrect"; exit 1; }
+          [[ "${{ steps.test-ecr-public.outputs.registry_type }}" == "ecr-public" ]] || { echo "ERROR: Registry type incorrect"; exit 1; }
+          echo "✅ AWS ECR Public parsing successful"
+
+  test-gcp-artifact-registry:
+    runs-on: ubuntu-latest
+    name: Test GCP Artifact Registry Parsing
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test GCP Artifact Registry format
+        uses: ./
+        id: test-gar
+        with:
+          image: 'us-central1-docker.pkg.dev/my-project/my-registry/my-service'
+          
+      - name: Verify GCP Artifact Registry outputs
+        run: |
+          echo "Testing GCP Artifact Registry parsing..."
+          [[ "${{ steps.test-gar.outputs.provider }}" == "gcp" ]] || { echo "ERROR: Provider should be 'gcp'"; exit 1; }
+          [[ "${{ steps.test-gar.outputs.account }}" == "my-project" ]] || { echo "ERROR: Project ID incorrect"; exit 1; }
+          [[ "${{ steps.test-gar.outputs.region }}" == "us-central1" ]] || { echo "ERROR: Region incorrect"; exit 1; }
+          [[ "${{ steps.test-gar.outputs.registry }}" == "us-central1-docker.pkg.dev/my-project/my-registry" ]] || { echo "ERROR: Registry incorrect"; exit 1; }
+          [[ "${{ steps.test-gar.outputs.repository }}" == "my-service" ]] || { echo "ERROR: Repository incorrect"; exit 1; }
+          [[ "${{ steps.test-gar.outputs.registry_type }}" == "artifact-registry" ]] || { echo "ERROR: Registry type incorrect"; exit 1; }
+          echo "✅ GCP Artifact Registry parsing successful"
+      
+      - name: Test GCP with nested repository
+        uses: ./
+        id: test-gar-nested
+        with:
+          image: 'europe-west1-docker.pkg.dev/project-123/registry/team/service/app'
+          
+      - name: Verify nested repository
+        run: |
+          [[ "${{ steps.test-gar-nested.outputs.provider }}" == "gcp" ]] || { echo "ERROR: Provider should be 'gcp'"; exit 1; }
+          [[ "${{ steps.test-gar-nested.outputs.account }}" == "project-123" ]] || { echo "ERROR: Project ID incorrect"; exit 1; }
+          [[ "${{ steps.test-gar-nested.outputs.repository }}" == "team/service/app" ]] || { echo "ERROR: Repository path incorrect"; exit 1; }
+          echo "✅ GCP nested repository parsing successful"
+
+  test-gcp-gcr:
+    runs-on: ubuntu-latest
+    name: Test GCP Container Registry (Legacy) Parsing
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test gcr.io format
+        uses: ./
+        id: test-gcr
+        with:
+          image: 'gcr.io/my-project/my-app'
+          
+      - name: Verify gcr.io outputs
+        run: |
+          echo "Testing gcr.io parsing..."
+          [[ "${{ steps.test-gcr.outputs.provider }}" == "gcp" ]] || { echo "ERROR: Provider should be 'gcp'"; exit 1; }
+          [[ "${{ steps.test-gcr.outputs.account }}" == "my-project" ]] || { echo "ERROR: Project ID incorrect"; exit 1; }
+          [[ "${{ steps.test-gcr.outputs.region }}" == "us" ]] || { echo "ERROR: Region should be 'us' for gcr.io"; exit 1; }
+          [[ "${{ steps.test-gcr.outputs.registry }}" == "gcr.io/my-project" ]] || { echo "ERROR: Registry incorrect"; exit 1; }
+          [[ "${{ steps.test-gcr.outputs.repository }}" == "my-app" ]] || { echo "ERROR: Repository incorrect"; exit 1; }
+          [[ "${{ steps.test-gcr.outputs.registry_type }}" == "gcr" ]] || { echo "ERROR: Registry type incorrect"; exit 1; }
+          echo "✅ gcr.io parsing successful"
+      
+      - name: Test regional gcr.io format
+        uses: ./
+        id: test-gcr-regional
+        with:
+          image: 'eu.gcr.io/my-project/my-service'
+          
+      - name: Verify regional gcr.io outputs
+        run: |
+          [[ "${{ steps.test-gcr-regional.outputs.provider }}" == "gcp" ]] || { echo "ERROR: Provider should be 'gcp'"; exit 1; }
+          [[ "${{ steps.test-gcr-regional.outputs.region }}" == "eu" ]] || { echo "ERROR: Region should be 'eu'"; exit 1; }
+          [[ "${{ steps.test-gcr-regional.outputs.registry }}" == "eu.gcr.io/my-project" ]] || { echo "ERROR: Registry incorrect"; exit 1; }
+          echo "✅ Regional gcr.io parsing successful"
+
+  test-azure:
+    runs-on: ubuntu-latest
+    name: Test Azure Container Registry Parsing
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test Azure ACR format
+        uses: ./
+        id: test-acr
+        with:
+          image: 'myregistry.azurecr.io/my-app'
+          
+      - name: Verify Azure ACR outputs
+        run: |
+          echo "Testing Azure ACR parsing..."
+          [[ "${{ steps.test-acr.outputs.provider }}" == "azure" ]] || { echo "ERROR: Provider should be 'azure'"; exit 1; }
+          [[ "${{ steps.test-acr.outputs.account }}" == "myregistry" ]] || { echo "ERROR: Registry name incorrect"; exit 1; }
+          [[ "${{ steps.test-acr.outputs.registry }}" == "myregistry.azurecr.io" ]] || { echo "ERROR: Registry incorrect"; exit 1; }
+          [[ "${{ steps.test-acr.outputs.repository }}" == "my-app" ]] || { echo "ERROR: Repository incorrect"; exit 1; }
+          [[ "${{ steps.test-acr.outputs.registry_type }}" == "acr" ]] || { echo "ERROR: Registry type incorrect"; exit 1; }
+          echo "✅ Azure ACR parsing successful"
+      
+      - name: Test Azure ACR with nested path
+        uses: ./
+        id: test-acr-nested
+        with:
+          image: 'contoso.azurecr.io/products/web/frontend'
+          
+      - name: Verify nested ACR repository
+        run: |
+          [[ "${{ steps.test-acr-nested.outputs.provider }}" == "azure" ]] || { echo "ERROR: Provider should be 'azure'"; exit 1; }
+          [[ "${{ steps.test-acr-nested.outputs.repository }}" == "products/web/frontend" ]] || { echo "ERROR: Repository path incorrect"; exit 1; }
+          echo "✅ Azure ACR nested path parsing successful"
+
+  test-github:
+    runs-on: ubuntu-latest
+    name: Test GitHub Container Registry Parsing
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test ghcr.io format
+        uses: ./
+        id: test-ghcr
+        with:
+          image: 'ghcr.io/myorg/my-service'
+          
+      - name: Verify ghcr.io outputs
+        run: |
+          echo "Testing ghcr.io parsing..."
+          [[ "${{ steps.test-ghcr.outputs.provider }}" == "github" ]] || { echo "ERROR: Provider should be 'github'"; exit 1; }
+          [[ "${{ steps.test-ghcr.outputs.account }}" == "myorg" ]] || { echo "ERROR: Organization incorrect"; exit 1; }
+          [[ "${{ steps.test-ghcr.outputs.registry }}" == "ghcr.io" ]] || { echo "ERROR: Registry incorrect"; exit 1; }
+          [[ "${{ steps.test-ghcr.outputs.repository }}" == "my-service" ]] || { echo "ERROR: Repository incorrect"; exit 1; }
+          [[ "${{ steps.test-ghcr.outputs.registry_type }}" == "ghcr" ]] || { echo "ERROR: Registry type incorrect"; exit 1; }
+          echo "✅ ghcr.io parsing successful"
+      
+      - name: Test ghcr.io with nested repository
+        uses: ./
+        id: test-ghcr-nested
+        with:
+          image: 'ghcr.io/myorg/team/project/service'
+          
+      - name: Verify nested ghcr.io repository
+        run: |
+          [[ "${{ steps.test-ghcr-nested.outputs.provider }}" == "github" ]] || { echo "ERROR: Provider should be 'github'"; exit 1; }
+          [[ "${{ steps.test-ghcr-nested.outputs.account }}" == "myorg" ]] || { echo "ERROR: Organization incorrect"; exit 1; }
+          [[ "${{ steps.test-ghcr-nested.outputs.repository }}" == "team/project/service" ]] || { echo "ERROR: Repository path incorrect"; exit 1; }
+          echo "✅ ghcr.io nested repository parsing successful"
+
+  test-dockerhub:
+    runs-on: ubuntu-latest
+    name: Test Docker Hub Parsing
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test Docker Hub short format
+        uses: ./
+        id: test-dockerhub-short
+        with:
+          image: 'myuser/my-app'
+          
+      - name: Verify Docker Hub short format outputs
+        run: |
+          echo "Testing Docker Hub short format parsing..."
+          [[ "${{ steps.test-dockerhub-short.outputs.provider }}" == "dockerhub" ]] || { echo "ERROR: Provider should be 'dockerhub'"; exit 1; }
+          [[ "${{ steps.test-dockerhub-short.outputs.account }}" == "myuser" ]] || { echo "ERROR: User incorrect"; exit 1; }
+          [[ "${{ steps.test-dockerhub-short.outputs.registry }}" == "docker.io" ]] || { echo "ERROR: Registry incorrect"; exit 1; }
+          [[ "${{ steps.test-dockerhub-short.outputs.repository }}" == "my-app" ]] || { echo "ERROR: Repository incorrect"; exit 1; }
+          [[ "${{ steps.test-dockerhub-short.outputs.registry_type }}" == "dockerhub" ]] || { echo "ERROR: Registry type incorrect"; exit 1; }
+          echo "✅ Docker Hub short format parsing successful"
+      
+      - name: Test Docker Hub full format
+        uses: ./
+        id: test-dockerhub-full
+        with:
+          image: 'docker.io/myuser/my-service'
+          
+      - name: Verify Docker Hub full format outputs
+        run: |
+          [[ "${{ steps.test-dockerhub-full.outputs.provider }}" == "dockerhub" ]] || { echo "ERROR: Provider should be 'dockerhub'"; exit 1; }
+          [[ "${{ steps.test-dockerhub-full.outputs.account }}" == "myuser" ]] || { echo "ERROR: User incorrect"; exit 1; }
+          [[ "${{ steps.test-dockerhub-full.outputs.repository }}" == "my-service" ]] || { echo "ERROR: Repository incorrect"; exit 1; }
+          echo "✅ Docker Hub full format parsing successful"
+      
+      - name: Test Docker Hub official image
+        uses: ./
+        id: test-dockerhub-official
+        with:
+          image: 'nginx'
+          
+      - name: Verify Docker Hub official image outputs
+        run: |
+          echo "Testing Docker Hub official image parsing..."
+          [[ "${{ steps.test-dockerhub-official.outputs.provider }}" == "dockerhub" ]] || { echo "ERROR: Provider should be 'dockerhub'"; exit 1; }
+          [[ "${{ steps.test-dockerhub-official.outputs.account }}" == "library" ]] || { echo "ERROR: Account should be 'library' for official images"; exit 1; }
+          [[ "${{ steps.test-dockerhub-official.outputs.registry }}" == "docker.io" ]] || { echo "ERROR: Registry incorrect"; exit 1; }
+          [[ "${{ steps.test-dockerhub-official.outputs.repository }}" == "nginx" ]] || { echo "ERROR: Repository incorrect"; exit 1; }
+          echo "✅ Docker Hub official image parsing successful"
+
+  test-generic:
+    runs-on: ubuntu-latest
+    name: Test Generic Registry Parsing
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test generic registry format
+        uses: ./
+        id: test-generic
+        with:
+          image: 'registry.company.com/team/my-app'
+          
+      - name: Verify generic registry outputs
+        run: |
+          echo "Testing generic registry parsing..."
+          [[ "${{ steps.test-generic.outputs.provider }}" == "generic" ]] || { echo "ERROR: Provider should be 'generic'"; exit 1; }
+          [[ "${{ steps.test-generic.outputs.account }}" == "team" ]] || { echo "ERROR: Account/namespace incorrect"; exit 1; }
+          [[ "${{ steps.test-generic.outputs.registry }}" == "registry.company.com" ]] || { echo "ERROR: Registry incorrect"; exit 1; }
+          [[ "${{ steps.test-generic.outputs.repository }}" == "my-app" ]] || { echo "ERROR: Repository incorrect"; exit 1; }
+          [[ "${{ steps.test-generic.outputs.registry_type }}" == "generic" ]] || { echo "ERROR: Registry type incorrect"; exit 1; }
+          echo "✅ Generic registry parsing successful"
+      
+      - name: Test generic registry with port
+        uses: ./
+        id: test-generic-port
+        with:
+          image: 'localhost:5000/my-service'
+          
+      - name: Verify generic registry with port
+        run: |
+          [[ "${{ steps.test-generic-port.outputs.provider }}" == "generic" ]] || { echo "ERROR: Provider should be 'generic'"; exit 1; }
+          [[ "${{ steps.test-generic-port.outputs.registry }}" == "localhost:5000" ]] || { echo "ERROR: Registry with port incorrect"; exit 1; }
+          [[ "${{ steps.test-generic-port.outputs.repository }}" == "my-service" ]] || { echo "ERROR: Repository incorrect"; exit 1; }
+          echo "✅ Generic registry with port parsing successful"
+
+  test-environment-variables:
+    runs-on: ubuntu-latest
+    name: Test Environment Variables Export
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test environment variable exports
+        uses: ./
+        id: test-env
+        with:
+          image: '123456789012.dkr.ecr.us-west-2.amazonaws.com/test-service'
+          
+      - name: Verify environment variables
+        run: |
+          echo "Testing environment variable exports..."
+          
+          # Check all expected environment variables are set
+          [[ "$IMAGE_PROVIDER" == "aws" ]] || { echo "ERROR: IMAGE_PROVIDER not set correctly"; exit 1; }
+          [[ "$IMAGE_ACCOUNT" == "123456789012" ]] || { echo "ERROR: IMAGE_ACCOUNT not set correctly"; exit 1; }
+          [[ "$IMAGE_REGION" == "us-west-2" ]] || { echo "ERROR: IMAGE_REGION not set correctly"; exit 1; }
+          [[ "$IMAGE_REGISTRY" == "123456789012.dkr.ecr.us-west-2.amazonaws.com" ]] || { echo "ERROR: IMAGE_REGISTRY not set correctly"; exit 1; }
+          [[ "$IMAGE_REPOSITORY" == "test-service" ]] || { echo "ERROR: IMAGE_REPOSITORY not set correctly"; exit 1; }
+          [[ "$IMAGE_REGISTRY_TYPE" == "ecr" ]] || { echo "ERROR: IMAGE_REGISTRY_TYPE not set correctly"; exit 1; }
+          
+          echo "✅ All environment variables exported correctly"
+
+  test-edge-cases:
+    runs-on: ubuntu-latest
+    name: Test Edge Cases
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test URL with https protocol
+        uses: ./
+        id: test-https
+        with:
+          image: 'https://ghcr.io/owner/repo'
+          
+      - name: Verify protocol stripping
+        run: |
+          [[ "${{ steps.test-https.outputs.provider }}" == "github" ]] || { echo "ERROR: Should handle https:// prefix"; exit 1; }
+          [[ "${{ steps.test-https.outputs.registry }}" == "ghcr.io" ]] || { echo "ERROR: Registry should not include protocol"; exit 1; }
+          echo "✅ Protocol stripping successful"
+      
+      - name: Test repository with hyphens and underscores
+        uses: ./
+        id: test-special-chars
+        with:
+          image: 'myregistry.azurecr.io/my-team_project/service_v2-beta'
+          
+      - name: Verify special characters in repository
+        run: |
+          [[ "${{ steps.test-special-chars.outputs.repository }}" == "my-team_project/service_v2-beta" ]] || { echo "ERROR: Special characters not preserved"; exit 1; }
+          echo "✅ Special characters in repository preserved"
+
+  test-error-cases:
+    runs-on: ubuntu-latest
+    name: Test Error Cases
+    continue-on-error: true  # Allow this job to complete even if individual steps fail
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test invalid image format
+        id: test-invalid
+        continue-on-error: true
+        uses: ./
+        with:
+          image: 'not-a-valid-registry-format'
+          
+      - name: Verify error handling
+        run: |
+          # This should have failed or produced generic output
+          if [[ "${{ steps.test-invalid.outcome }}" == "failure" ]]; then
+            echo "✅ Invalid format correctly rejected"
+          elif [[ "${{ steps.test-invalid.outputs.provider }}" == "dockerhub" ]]; then
+            echo "✅ Simple name treated as Docker Hub"
+          else
+            echo "⚠️  Unexpected handling of invalid format"
+          fi

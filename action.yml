@@ -1,0 +1,201 @@
+name: 'Parse Image Registry'
+description: 'Parses a Docker image URL to extract cloud provider and registry information'
+author: 'KoalaOps'
+
+branding:
+  icon: 'package'
+  color: 'purple'
+
+inputs:
+  image:
+    description: 'Full Docker image URL (e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com/my-service or us-central1-docker.pkg.dev/my-project/my-registry/my-service)'
+    required: true
+
+outputs:
+  provider:
+    description: 'Cloud provider (aws, gcp, azure, github, dockerhub, or generic)'
+    value: ${{ steps.parse.outputs.provider }}
+  account:
+    description: 'Account/Project ID (AWS account, GCP project, Azure registry name, GitHub org, etc.)'
+    value: ${{ steps.parse.outputs.account }}
+  region:
+    description: 'Region/Location (if applicable)'
+    value: ${{ steps.parse.outputs.region }}
+  registry:
+    description: 'Full registry URL (without image name)'
+    value: ${{ steps.parse.outputs.registry }}
+  repository:
+    description: 'Repository/image name (without registry)'
+    value: ${{ steps.parse.outputs.repository }}
+  registry_type:
+    description: 'Type of registry (ecr, artifact-registry, acr, ghcr, dockerhub, generic)'
+    value: ${{ steps.parse.outputs.registry_type }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Parse image registry
+      id: parse
+      shell: bash
+      run: |
+        IMAGE="${{ inputs.image }}"
+        echo "📦 Parsing image URL: $IMAGE"
+        
+        # Initialize variables
+        PROVIDER=""
+        ACCOUNT=""
+        REGION=""
+        REGISTRY=""
+        REPOSITORY=""
+        REGISTRY_TYPE=""
+        
+        # Remove protocol if present
+        IMAGE="${IMAGE#https://}"
+        IMAGE="${IMAGE#http://}"
+        
+        # AWS ECR Detection
+        # Format: {account}.dkr.ecr.{region}.amazonaws.com/{repository}
+        if [[ "$IMAGE" =~ ^([0-9]{12})\.dkr\.ecr\.([a-z0-9-]+)\.amazonaws\.com/(.+)$ ]]; then
+          PROVIDER="aws"
+          ACCOUNT="${BASH_REMATCH[1]}"
+          REGION="${BASH_REMATCH[2]}"
+          REPOSITORY="${BASH_REMATCH[3]}"
+          REGISTRY="${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com"
+          REGISTRY_TYPE="ecr"
+          echo "✅ Detected AWS ECR registry"
+        
+        # AWS ECR Public Detection
+        # Format: public.ecr.aws/{alias}/{repository}
+        elif [[ "$IMAGE" =~ ^public\.ecr\.aws/([^/]+)/(.+)$ ]]; then
+          PROVIDER="aws"
+          ACCOUNT="${BASH_REMATCH[1]}"
+          REGION="us-east-1"  # ECR Public is always us-east-1
+          REPOSITORY="${BASH_REMATCH[2]}"
+          REGISTRY="public.ecr.aws/${ACCOUNT}"
+          REGISTRY_TYPE="ecr-public"
+          echo "✅ Detected AWS ECR Public registry"
+        
+        # GCP Artifact Registry Detection
+        # Format: {region}-docker.pkg.dev/{project}/{registry}/{repository}
+        elif [[ "$IMAGE" =~ ^([a-z0-9-]+)-docker\.pkg\.dev/([^/]+)/([^/]+)/(.+)$ ]]; then
+          PROVIDER="gcp"
+          REGION="${BASH_REMATCH[1]}"
+          ACCOUNT="${BASH_REMATCH[2]}"  # Project ID
+          GCP_REGISTRY="${BASH_REMATCH[3]}"
+          REPOSITORY="${BASH_REMATCH[4]}"
+          REGISTRY="${REGION}-docker.pkg.dev/${ACCOUNT}/${GCP_REGISTRY}"
+          REGISTRY_TYPE="artifact-registry"
+          echo "✅ Detected GCP Artifact Registry"
+        
+        # GCP Container Registry Detection (legacy)
+        # Format: gcr.io/{project}/{repository} or {region}.gcr.io/{project}/{repository}
+        elif [[ "$IMAGE" =~ ^(([a-z]+\.)?)gcr\.io/([^/]+)/(.+)$ ]]; then
+          PROVIDER="gcp"
+          REGION="${BASH_REMATCH[2]%%.}"  # Remove trailing dot
+          ACCOUNT="${BASH_REMATCH[3]}"  # Project ID
+          REPOSITORY="${BASH_REMATCH[4]}"
+          if [ -z "$REGION" ]; then
+            REGISTRY="gcr.io/${ACCOUNT}"
+            REGION="us"  # Default region for gcr.io
+          else
+            REGISTRY="${REGION}.gcr.io/${ACCOUNT}"
+          fi
+          REGISTRY_TYPE="gcr"
+          echo "✅ Detected GCP Container Registry (legacy)"
+        
+        # Azure Container Registry Detection
+        # Format: {registry}.azurecr.io/{repository}
+        elif [[ "$IMAGE" =~ ^([^.]+)\.azurecr\.io/(.+)$ ]]; then
+          PROVIDER="azure"
+          ACCOUNT="${BASH_REMATCH[1]}"
+          REPOSITORY="${BASH_REMATCH[2]}"
+          REGISTRY="${ACCOUNT}.azurecr.io"
+          REGISTRY_TYPE="acr"
+          echo "✅ Detected Azure Container Registry"
+        
+        # GitHub Container Registry Detection
+        # Format: ghcr.io/{owner}/{repository}
+        elif [[ "$IMAGE" =~ ^ghcr\.io/([^/]+)/(.+)$ ]]; then
+          PROVIDER="github"
+          ACCOUNT="${BASH_REMATCH[1]}"
+          REPOSITORY="${BASH_REMATCH[2]}"
+          REGISTRY="ghcr.io"
+          REGISTRY_TYPE="ghcr"
+          echo "✅ Detected GitHub Container Registry"
+        
+        # Docker Hub Detection - Full format
+        # Format: docker.io/{namespace}/{repository}
+        elif [[ "$IMAGE" =~ ^docker\.io/([^/]+)/(.+)$ ]]; then
+          PROVIDER="dockerhub"
+          ACCOUNT="${BASH_REMATCH[1]}"
+          REPOSITORY="${BASH_REMATCH[2]}"
+          REGISTRY="docker.io"
+          REGISTRY_TYPE="dockerhub"
+          echo "✅ Detected Docker Hub registry"
+        
+        # Generic registry with domain (including port)
+        # Format: {registry}/{path...} or {host:port}/{path...}
+        elif [[ "$IMAGE" =~ ^([^/]+\.[^/]+)/(.+)$ ]] || [[ "$IMAGE" =~ ^([^/]+:[0-9]+)/(.+)$ ]]; then
+          PROVIDER="generic"
+          REGISTRY="${BASH_REMATCH[1]}"
+          REPOSITORY="${BASH_REMATCH[2]}"
+          REGISTRY_TYPE="generic"
+          
+          # Try to extract account from repository path
+          if [[ "$REPOSITORY" =~ ^([^/]+)/(.+)$ ]]; then
+            ACCOUNT="${BASH_REMATCH[1]}"
+            REPOSITORY="${BASH_REMATCH[2]}"
+          fi
+          echo "✅ Detected generic registry: $REGISTRY"
+        
+        # Docker Hub Detection - Short format
+        # Format: {namespace}/{repository} (no dots in namespace)
+        elif [[ "$IMAGE" =~ ^([^/\.]+)/([^/]+)$ ]]; then
+          PROVIDER="dockerhub"
+          ACCOUNT="${BASH_REMATCH[1]}"
+          REPOSITORY="${BASH_REMATCH[2]}"
+          REGISTRY="docker.io"
+          REGISTRY_TYPE="dockerhub"
+          echo "✅ Detected Docker Hub registry (short format)"
+        
+        
+        # Fallback for simple image names (assume Docker Hub)
+        elif [[ "$IMAGE" =~ ^[^/]+$ ]]; then
+          PROVIDER="dockerhub"
+          ACCOUNT="library"  # Docker Hub official images
+          REPOSITORY="$IMAGE"
+          REGISTRY="docker.io"
+          REGISTRY_TYPE="dockerhub"
+          echo "✅ Detected Docker Hub official image"
+        
+        else
+          echo "::error::Unable to parse image URL: $IMAGE"
+          exit 1
+        fi
+        
+        # Set outputs
+        echo "provider=$PROVIDER" >> $GITHUB_OUTPUT
+        echo "account=$ACCOUNT" >> $GITHUB_OUTPUT
+        echo "region=$REGION" >> $GITHUB_OUTPUT
+        echo "registry=$REGISTRY" >> $GITHUB_OUTPUT
+        echo "repository=$REPOSITORY" >> $GITHUB_OUTPUT
+        echo "registry_type=$REGISTRY_TYPE" >> $GITHUB_OUTPUT
+        
+        # Summary
+        echo "📋 Parsed image details:"
+        echo "  Provider: $PROVIDER"
+        echo "  Account: $ACCOUNT"
+        if [ -n "$REGION" ]; then
+          echo "  Region: $REGION"
+        fi
+        echo "  Registry: $REGISTRY"
+        echo "  Repository: $REPOSITORY"
+        echo "  Registry Type: $REGISTRY_TYPE"
+        
+        # Add to environment for convenience
+        echo "IMAGE_PROVIDER=$PROVIDER" >> $GITHUB_ENV
+        echo "IMAGE_ACCOUNT=$ACCOUNT" >> $GITHUB_ENV
+        echo "IMAGE_REGION=$REGION" >> $GITHUB_ENV
+        echo "IMAGE_REGISTRY=$REGISTRY" >> $GITHUB_ENV
+        echo "IMAGE_REPOSITORY=$REPOSITORY" >> $GITHUB_ENV
+        echo "IMAGE_REGISTRY_TYPE=$REGISTRY_TYPE" >> $GITHUB_ENV
