@@ -112,7 +112,7 @@ jobs:
 
 ## Registry Examples
 
-### AWS ECR
+### AWS ECR (Private)
 ```yaml
 with:
   image: '123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app'
@@ -126,43 +126,88 @@ with:
 ```
 
 ### AWS ECR Public
+ECR Public uses a different URL format and is always hosted in us-east-1:
 ```yaml
 with:
   image: 'public.ecr.aws/myalias/my-app'
 # Outputs:
 #   provider: aws
-#   account: myalias
-#   region: us-east-1  # ECR Public is always us-east-1
+#   account: myalias  # Your public registry alias
+#   region: us-east-1  # Always us-east-1 for ECR Public
 #   registry: public.ecr.aws/myalias
 #   repository: my-app
 #   registry_type: ecr-public
 ```
 
+**Note:** ECR Public galleries are globally accessible but hosted in us-east-1. The `account` field contains your public registry alias, not an AWS account ID.
+
 ### GCP Artifact Registry
+
+#### Regional Endpoint (Specific Region)
 ```yaml
 with:
   image: 'us-central1-docker.pkg.dev/my-project/my-registry/my-service'
 # Outputs:
 #   provider: gcp
 #   account: my-project
-#   region: us-central1
+#   region: us-central1  # Specific region
 #   registry: us-central1-docker.pkg.dev/my-project/my-registry
 #   repository: my-service
 #   registry_type: artifact-registry
 ```
 
+#### Multi-Regional Endpoint
+```yaml
+with:
+  image: 'us-docker.pkg.dev/my-project/my-registry/my-service'
+# Outputs:
+#   provider: gcp
+#   account: my-project
+#   region: us  # Multi-regional: us, europe, or asia
+#   registry: us-docker.pkg.dev/my-project/my-registry
+#   repository: my-service
+#   registry_type: artifact-registry
+```
+
+**Note:** GAR supports both regional (e.g., `us-central1-docker.pkg.dev`) and multi-regional (e.g., `us-docker.pkg.dev`) endpoints. Multi-regional endpoints provide redundancy across multiple regions within a geography.
+
 ### GCP Container Registry (Legacy)
+
+#### Global Registry (gcr.io)
 ```yaml
 with:
   image: 'gcr.io/my-project/my-app'
 # Outputs:
 #   provider: gcp
 #   account: my-project
-#   region: us  # Default region for gcr.io
+#   region: us  # Default multi-regional location
 #   registry: gcr.io/my-project
 #   repository: my-app
 #   registry_type: gcr
 ```
+
+#### Regional Variants
+```yaml
+# US multi-regional
+with:
+  image: 'us.gcr.io/my-project/my-app'
+# Outputs:
+#   region: us  # Multi-regional US
+
+# Europe multi-regional
+with:
+  image: 'eu.gcr.io/my-project/my-app'
+# Outputs:
+#   region: eu  # Multi-regional Europe
+
+# Asia multi-regional
+with:
+  image: 'asia.gcr.io/my-project/my-app'
+# Outputs:
+#   region: asia  # Multi-regional Asia
+```
+
+**Note:** GCR endpoints (`gcr.io`, `us.gcr.io`, `eu.gcr.io`, `asia.gcr.io`) are multi-regional, storing images redundantly across regions within that geography. The `region` output reflects the multi-regional location, not a specific region.
 
 ### Azure Container Registry
 ```yaml

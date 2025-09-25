@@ -214,10 +214,16 @@ echo
 
 # GCP Tests
 echo -e "${YELLOW}GCP Tests:${NC}"
-run_test "GCP Artifact Registry" \
+run_test "GCP Artifact Registry (Regional)" \
     "us-central1-docker.pkg.dev/my-project/my-registry/my-service" \
     "gcp" "my-project" "us-central1" \
     "us-central1-docker.pkg.dev/my-project/my-registry" \
+    "my-service" "artifact-registry"
+
+run_test "GCP Artifact Registry (Multi-regional)" \
+    "us-docker.pkg.dev/my-project/my-registry/my-service" \
+    "gcp" "my-project" "us" \
+    "us-docker.pkg.dev/my-project/my-registry" \
     "my-service" "artifact-registry"
 
 run_test "GCP Container Registry (gcr.io)" \
@@ -226,10 +232,16 @@ run_test "GCP Container Registry (gcr.io)" \
     "gcr.io/my-project" \
     "my-app" "gcr"
 
-run_test "GCP Regional GCR" \
+run_test "GCP Regional GCR (EU)" \
     "eu.gcr.io/my-project/my-service" \
     "gcp" "my-project" "eu" \
     "eu.gcr.io/my-project" \
+    "my-service" "gcr"
+
+run_test "GCP Regional GCR (Asia)" \
+    "asia.gcr.io/my-project/my-service" \
+    "gcp" "my-project" "asia" \
+    "asia.gcr.io/my-project" \
     "my-service" "gcr"
 
 echo
