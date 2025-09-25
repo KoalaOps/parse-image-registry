@@ -79,7 +79,6 @@ jobs:
           account: ${{ steps.parse_registry.outputs.account }}
           region: ${{ steps.parse_registry.outputs.region }}
           login_to_container_registry: true
-          registry: ${{ steps.parse_registry.outputs.registry }}
           # Pass all potential credentials - cloud-login uses what's needed
           aws_role_to_assume: ${{ vars.AWS_BUILD_ROLE }}
           gcp_workload_identity_provider: ${{ vars.WIF_PROVIDER }}
