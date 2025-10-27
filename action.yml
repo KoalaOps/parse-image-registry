@@ -30,6 +30,12 @@ outputs:
   registry_type:
     description: 'Type of registry (ecr, artifact-registry, acr, ghcr, dockerhub, generic)'
     value: ${{ steps.parse.outputs.registry_type }}
+  tag:
+    description: 'Image tag (if present in the image URL)'
+    value: ${{ steps.parse.outputs.tag }}
+  digest:
+    description: 'Image digest (if present in the image URL)'
+    value: ${{ steps.parse.outputs.digest }}
 
 runs:
   using: 'composite'
@@ -40,7 +46,7 @@ runs:
       run: |
         IMAGE="${{ inputs.image }}"
         echo "📦 Parsing image URL: $IMAGE"
-        
+
         # Initialize variables
         PROVIDER=""
         ACCOUNT=""
@@ -48,10 +54,40 @@ runs:
         REGISTRY=""
         REPOSITORY=""
         REGISTRY_TYPE=""
-        
-        # Remove protocol if present
+        TAG=""
+        DIGEST=""
+
+        # Remove protocol if present (must be done before tag stripping)
         IMAGE="${IMAGE#https://}"
         IMAGE="${IMAGE#http://}"
+
+        # Strip any tag or digest suffix
+        # Pattern explanation: Match registry/repo:tag or registry/repo@digest or registry:port/repo (don't strip port)
+        if [[ "$IMAGE" =~ ^([^:@]+:[0-9]+/.*)$ ]]; then
+          # Has port number (e.g., localhost:5000/image) - don't strip anything yet
+          IMAGE="$IMAGE"
+        elif [[ "$IMAGE" =~ ^([^:@/]+):([^@]+)(@.+)?$ ]]; then
+          # Has tag (and maybe digest), but no slashes before the colon (so not a port)
+          IMAGE="${BASH_REMATCH[1]}"
+          TAG="${BASH_REMATCH[2]}"
+          if [[ -n "${BASH_REMATCH[3]}" ]]; then
+            DIGEST="${BASH_REMATCH[3]#@}"
+          fi
+          echo "📌 Stripped tag '$TAG', parsing: $IMAGE"
+        elif [[ "$IMAGE" =~ ^(.+/[^:@]+):([^@]+)(@.+)?$ ]]; then
+          # Has slash before colon, so tag comes after the path
+          IMAGE="${BASH_REMATCH[1]}"
+          TAG="${BASH_REMATCH[2]}"
+          if [[ -n "${BASH_REMATCH[3]}" ]]; then
+            DIGEST="${BASH_REMATCH[3]#@}"
+          fi
+          echo "📌 Stripped tag '$TAG', parsing: $IMAGE"
+        elif [[ "$IMAGE" =~ ^([^@]+)(@.+)$ ]]; then
+          # Has digest only
+          IMAGE="${BASH_REMATCH[1]}"
+          DIGEST="${BASH_REMATCH[2]#@}"
+          echo "📌 Stripped digest, parsing: $IMAGE"
+        fi
         
         # AWS ECR Detection
         # Format: {account}.dkr.ecr.{region}.amazonaws.com/{repository}
@@ -180,6 +216,8 @@ runs:
         echo "registry=$REGISTRY" >> $GITHUB_OUTPUT
         echo "repository=$REPOSITORY" >> $GITHUB_OUTPUT
         echo "registry_type=$REGISTRY_TYPE" >> $GITHUB_OUTPUT
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+        echo "digest=$DIGEST" >> $GITHUB_OUTPUT
         
         # Summary
         echo "📋 Parsed image details:"
@@ -190,8 +228,14 @@ runs:
         fi
         echo "  Registry: $REGISTRY"
         echo "  Repository: $REPOSITORY"
+        if [ -n "$TAG" ]; then
+          echo "  Tag: $TAG"
+        fi
+        if [ -n "$DIGEST" ]; then
+          echo "  Digest: $DIGEST"
+        fi
         echo "  Registry Type: $REGISTRY_TYPE"
-        
+
         # Add to environment for convenience
         echo "IMAGE_PROVIDER=$PROVIDER" >> $GITHUB_ENV
         echo "IMAGE_ACCOUNT=$ACCOUNT" >> $GITHUB_ENV
@@ -199,3 +243,5 @@ runs:
         echo "IMAGE_REGISTRY=$REGISTRY" >> $GITHUB_ENV
         echo "IMAGE_REPOSITORY=$REPOSITORY" >> $GITHUB_ENV
         echo "IMAGE_REGISTRY_TYPE=$REGISTRY_TYPE" >> $GITHUB_ENV
+        echo "IMAGE_TAG=$TAG" >> $GITHUB_ENV
+        echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
