@@ -30,7 +30,7 @@ run_test() {
     
     # Source the parsing logic (extract from action.yml)
     IMAGE="$image"
-    
+
     # Initialize variables
     PROVIDER=""
     ACCOUNT=""
@@ -38,10 +38,37 @@ run_test() {
     REGISTRY=""
     REPOSITORY=""
     REGISTRY_TYPE=""
-    
-    # Remove protocol if present
+    TAG=""
+    DIGEST=""
+
+    # Remove protocol if present (must be done before tag stripping)
     IMAGE="${IMAGE#https://}"
     IMAGE="${IMAGE#http://}"
+
+    # Strip any tag or digest suffix
+    # Pattern explanation: Match registry/repo:tag or registry/repo@digest or registry:port/repo (don't strip port)
+    if [[ "$IMAGE" =~ ^([^:@]+:[0-9]+/.*)$ ]]; then
+        # Has port number (e.g., localhost:5000/image) - don't strip anything yet
+        IMAGE="$IMAGE"
+    elif [[ "$IMAGE" =~ ^([^:@/]+):([^@]+)(@.+)?$ ]]; then
+        # Has tag (and maybe digest), but no slashes before the colon (so not a port)
+        IMAGE="${BASH_REMATCH[1]}"
+        TAG="${BASH_REMATCH[2]}"
+        if [[ -n "${BASH_REMATCH[3]}" ]]; then
+            DIGEST="${BASH_REMATCH[3]#@}"
+        fi
+    elif [[ "$IMAGE" =~ ^(.+/[^:@]+):([^@]+)(@.+)?$ ]]; then
+        # Has slash before colon, so tag comes after the path
+        IMAGE="${BASH_REMATCH[1]}"
+        TAG="${BASH_REMATCH[2]}"
+        if [[ -n "${BASH_REMATCH[3]}" ]]; then
+            DIGEST="${BASH_REMATCH[3]#@}"
+        fi
+    elif [[ "$IMAGE" =~ ^([^@]+)(@.+)$ ]]; then
+        # Has digest only
+        IMAGE="${BASH_REMATCH[1]}"
+        DIGEST="${BASH_REMATCH[2]#@}"
+    fi
     
     # AWS ECR Detection
     if [[ "$IMAGE" =~ ^([0-9]{12})\.dkr\.ecr\.([a-z0-9-]+)\.amazonaws\.com/(.+)$ ]]; then
@@ -323,6 +350,24 @@ run_test "URL with https://" \
     "github" "owner" "" \
     "ghcr.io" \
     "repo" "ghcr"
+
+run_test "AWS ECR with tag" \
+    "568619624722.dkr.ecr.eu-central-1.amazonaws.com/forc-worker:forc-worker_main_2025-10-20_01" \
+    "aws" "568619624722" "eu-central-1" \
+    "568619624722.dkr.ecr.eu-central-1.amazonaws.com" \
+    "forc-worker" "ecr"
+
+run_test "Docker Hub with tag" \
+    "nginx:latest" \
+    "dockerhub" "library" "" \
+    "docker.io" \
+    "nginx" "dockerhub"
+
+run_test "GCP GAR with tag" \
+    "us-central1-docker.pkg.dev/my-project/my-registry/my-service:v1.2.3" \
+    "gcp" "my-project" "us-central1" \
+    "us-central1-docker.pkg.dev/my-project/my-registry" \
+    "my-service" "artifact-registry"
 
 echo
 echo "===================================="

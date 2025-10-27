@@ -29,7 +29,22 @@ In monorepo setups or multi-cloud environments, different services may use diffe
 
 ## Quick Start
 
-### Basic Usage
+### Option 1: Single-Step Authentication (Recommended)
+
+For most use cases, you can pass the image directly to `cloud-login` which will handle both parsing and authentication:
+
+```yaml
+- name: Authenticate and login to registry
+  uses: KoalaOps/cloud-login@v1
+  with:
+    image: 123456789.dkr.ecr.us-east-1.amazonaws.com/my-service:v1.0.0  # Tags are automatically stripped
+    login_to_container_registry: true
+    aws_role_to_assume: ${{ vars.AWS_BUILD_ROLE }}
+```
+
+### Option 2: Two-Step Process (Advanced)
+
+For complex workflows where you need the parsed information for multiple steps:
 
 ```yaml
 - name: Parse image registry
@@ -44,6 +59,14 @@ In monorepo setups or multi-cloud environments, different services may use diffe
     echo "Account: ${{ steps.parse_registry.outputs.account }}"
     echo "Region: ${{ steps.parse_registry.outputs.region }}"
     echo "Registry: ${{ steps.parse_registry.outputs.registry }}"
+
+- name: Authenticate to cloud
+  uses: KoalaOps/cloud-login@v1
+  with:
+    provider: ${{ steps.parse_registry.outputs.provider }}
+    account: ${{ steps.parse_registry.outputs.account }}
+    region: ${{ steps.parse_registry.outputs.region }}
+    login_to_container_registry: true
 ```
 
 ### Real-World Example: Multi-Cloud Build Pipeline
@@ -64,25 +87,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      # Parse the image URL to determine where to push
-      - name: Parse image registry
-        id: parse_registry
-        uses: KoalaOps/parse-image-registry@v1
-        with:
-          image: ${{ inputs.image }}
-      
-      # Authenticate with the detected cloud provider
+      # Single-step authentication using image auto-detection
       - name: Login to registry
         uses: KoalaOps/cloud-login@v1
         with:
-          provider: ${{ steps.parse_registry.outputs.provider }}
-          account: ${{ steps.parse_registry.outputs.account }}
-          region: ${{ steps.parse_registry.outputs.region }}
+          image: ${{ inputs.image }}  # Auto-detects provider, account, region
           login_to_container_registry: true
           # Pass all potential credentials - cloud-login uses what's needed
           aws_role_to_assume: ${{ vars.AWS_BUILD_ROLE }}
           gcp_workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           gcp_service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+          azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure_client_secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
       
       # Build and push to the detected registry
@@ -97,7 +114,7 @@ jobs:
 
 | Input | Description | Required |
 |-------|-------------|----------|
-| `image` | Full Docker image URL (without tag) | Yes |
+| `image` | Full Docker image URL (tags/digests are automatically stripped) | Yes |
 
 ## Outputs
 
